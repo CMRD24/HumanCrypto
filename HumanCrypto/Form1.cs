@@ -5,10 +5,13 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Data;
 using System.Drawing;
+using System.IO;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using static System.Resources.ResXFileRef;
 
 namespace HumanCrypto
 {
@@ -292,6 +295,125 @@ namespace HumanCrypto
             //int g = colors.Select(x => (int)x.G).Sum() / colors.Count;
             //int b = colors.Select(x => (int)x.B).Sum() / colors.Count;
             return bmp;
+        }
+
+        private byte[] getRandomSTMLMap()
+        {
+            byte[] data = new byte[10];
+            RandomNumberGenerator rng = RandomNumberGenerator.Create();
+            rng.GetBytes(data);
+            return data.Select(x => (byte)(x % 10)).ToArray();
+        }
+
+        private byte[] getRandomSTMLSeed5(int length)
+        {
+            byte[] data = new byte[10+2*length];
+            RandomNumberGenerator rng = RandomNumberGenerator.Create();
+            rng.GetBytes(data);
+            return data.Where(x => x<255).Select(x => (byte)(x % 5)).Take(length).ToArray();
+        }
+
+        private byte[] skipInsertN(byte[] data, int n)
+        {
+            return data.Where((x, i) => i % (2 * n) >= n).ToArray();
+        }
+
+        private byte[] stml_prg(byte[] data, byte[] map, byte initial)
+        {
+            byte s = initial;
+            List<byte> result = new List<byte>();
+            for (int i = 0; i < data.Length; i++)
+            {
+                s = (byte)((map[s] + data[i]) % 10);
+                if (s < 5)
+                {
+                    result.Add(s);
+                }
+            }
+            return result.ToArray();
+        }
+
+        private byte[] prg1(byte[] seed, byte[] map)
+        {
+            //expand seed:
+            List<byte> expandedSeed = new List<byte>();
+            expandedSeed.AddRange(seed);
+            for (int i = 1; i <= seed.Length / 2; i++)
+            {
+                expandedSeed.AddRange(skipInsertN(seed, i));
+            }
+            //MessageBox.Show(string.Join("", expandedSeed.Select(x => x.ToString())));
+            return stml_prg(expandedSeed.ToArray(), map, seed.Last());
+        }
+
+
+        private List<byte> convert5to256Random(byte[] data)
+        {
+            List<byte> list = new List<byte>();
+            for (int i = 0; i < data.Length - 3; i = i + 4)
+            {
+
+                int d = data[i] * 125 + data[i + 1] * 25 + data[i + 2] * 5 + data[i + 3];
+                if (d >= 512)
+                {
+                    continue;
+                }
+                list.Add((byte)(d % 256));
+            }
+            return list;
+
+        }
+
+        private void button8_Click(object sender, EventArgs e)
+        {
+            /*byte[] result = prg1(new byte[] { 3,1,4,1,5,9,2,6}, new byte[] {0,3,6,9,2,5,8,1,4,7 });
+            MessageBox.Show(string.Join("", result.Select(x => x.ToString())));
+            result = prg1(getRandomSTMLSeed5(20), getRandomSTMLMap());
+            MessageBox.Show(string.Join("", result.Select(x => x.ToString())));
+            var r2 = convert5to256Random(result);
+            MessageBox.Show(string.Join(",", r2.Select(x => x.ToString())));*/
+            //var map = getRandomSTMLMap();
+            var map = new byte[] { 0, 3, 6, 9, 2, 5, 8, 1, 4, 7 };
+            using (var stream = new FileStream("stml-prg.bin", FileMode.Append))
+            {
+                for (int i = 0; i < 10000000; i++)
+                {
+                    var result = prg1(getRandomSTMLSeed5(10), map);
+                    var converted = convert5to256Random(result).ToArray();
+                    stream.Write(converted, 0, converted.Length);
+                }
+
+            }
+        }
+
+        private void button9_Click(object sender, EventArgs e)
+        {
+            using (var stream = new FileStream("sanity.bin", FileMode.Append))
+            {
+                for (int i = 0; i < 10000000; i++)
+                {
+                    var result = getRandomSTMLSeed5(10);
+                    var converted = convert5to256Random(result).ToArray();
+                    stream.Write(converted, 0, converted.Length);
+                }
+
+            }
+        }
+
+        private void button10_Click(object sender, EventArgs e)
+        {
+            using (var stream = new FileStream("sanity256.bin", FileMode.Append))
+            {
+                for (int i = 0; i < 10000000; i++)
+                {
+                    byte[] data = new byte[4];
+                    RandomNumberGenerator rng = RandomNumberGenerator.Create();
+                    rng.GetBytes(data);
+                    stream.Write(data, 0, data.Length);
+                }
+
+            }
+            
         }
     }
 }
